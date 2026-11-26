@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Подписчики: кто отписался</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--tx:#1b1b1b;--mut:#74726c;--ac:#1f4fd8;--bd:#e2dfd8;--red:#c4301f;--grn:#1a7a42;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121211;--card:#1c1c1a;--tx:#f0eee9;--mut:#9b988f;--ac:#7ea2ff;--bd:#2f2e2b;--red:#ff7a68;--grn:#52d68a}}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+h2{font-size:18px;margin:28px 0 10px}
+p.sub{color:var(--mut);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
+button,select,input[type=search]{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 12px}
+button{cursor:pointer}
+button.pri{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600}
+button.sm{padding:6px 10px;font-size:14px}
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.drop{border:2px dashed var(--bd);border-radius:12px;padding:22px;text-align:center;color:var(--mut)}
+.drop.on{border-color:var(--ac)}
+.snap{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--bd)}
+.snap:first-child{border-top:0}
+.snap small,.mut{color:var(--mut)}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cmp select{width:100%}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
+.stat{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}
+.stat b{display:block;font-size:28px;line-height:1.1}
+.stat span{color:var(--mut);font-size:13px}
+.neg{color:var(--red)}.pos{color:var(--grn)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 8px}
+.tabs button.act{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+ul.users{list-style:none;margin:0;padding:0}
+ul.users li{display:flex;justify-content:space-between;gap:10px;padding:9px 2px;border-top:1px solid var(--bd)}
+ul.users a{color:var(--ac);text-decoration:none;word-break:break-all}
+.empty{color:var(--mut);padding:14px 2px}
+input[type=search]{width:100%;margin:8px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Кто отписался</h1>
+<p class="sub">Загружайте экспорты Instagram (followers / following) и сравнивайте любые два. Файлы остаются в вашем браузере и никуда не отправляются.</p>
+
+<label class="drop" id="drop" style="display:block">
+  Нажмите и выберите файлы followers_1.html (можно несколько сразу)
+  <input id="file" type="file" multiple accept=".html,.htm,.json,.txt" hidden>
+</label>
+<div id="msg" class="mut" style="margin-top:8px"></div>
+
+<h2>Сохранённые снимки</h2>
+<div class="card" id="snaps"></div>
+<div class="row" style="margin-top:10px">
+  <button class="sm" id="bk">Сохранить резервную копию</button>
+  <label class="sm" style="cursor:pointer"><button class="sm" type="button" id="rs">Восстановить из копии</button><input id="restore" type="file" accept=".json" hidden></label>
+</div>
+
+<div id="cmpWrap" hidden>
+  <h2>Сравнение</h2>
+  <div class="row" style="margin-bottom:8px"><span class="mut">Тип:</span>
+    <select id="type"></select></div>
+  <div class="cmp">
+    <div><div class="mut">Старый снимок</div><select id="a"></select></div>
+    <div><div class="mut">Новый снимок</div><select id="b"></select></div>
+  </div>
+  <div id="res"></div>
+</div>
+</main>
+
+<script>
+const KEY='ft_snaps_v1';
+let snaps=[];
+try{snaps=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){}
+let tab='out',q='';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function save(){try{localStorage.setItem(KEY,JSON.stringify(snaps))}catch(e){$('msg').textContent='Не удалось сохранить в браузере. Сделайте резервную копию.'}}
+const TN={followers:'Подписчики',following:'Подписки'};
+const fmt=ts=>new Date(ts).toLocaleString('ru',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+const MON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+const dateRe=/^[A-Z][a-z]{2} \d{1,2}, \d{4} \d{1,2}:\d{2} ?[ap]m$/i;
+const userRe=/^[A-Za-z0-9._]{1,40}$/;
+
+function parse(text,file){
+  let users=[],type=null,ts=null;
+  const t=text.trim();
+  if(t[0]==='{'||t[0]==='['){
+    const j=JSON.parse(t);
+    if(j&&j.ft===1)return{backup:j};
+    let arr=Array.isArray(j)?j:(j.relationships_followers||j.relationships_following||[]);
+    type=(j.relationships_following)?'following':'followers';
+    if(/following/i.test(file.name))type='following';
+    for(const it of arr){const d=(it.string_list_data||[])[0];if(d){const u=d.value||(d.href||'').split('/').filter(Boolean).pop();if(u)users.push({u,t:d.timestamp?fmt(d.timestamp*1000):''})}}
+  }else{
+    let plain=t;
+    if(/<html|<body|<a /i.test(t)){
+      const doc=new DOMParser().parseFromString(t,'text/html');
+      doc.querySelectorAll('div,a,h1,h2,h3,p,li,tr,td,br').forEach(e=>e.append('\n'));
+      plain=doc.body.textContent;
+    }
+    const lines=plain.split('\n').map(s=>s.trim()).filter(Boolean);
+    const first=lines.find(l=>/^(Followers|Following)\b/i.test(l));
+    type=first&&/^following/i.test(first)?'following':'followers';
+    let prev='';
+    for(const l of lines){
+      if(dateRe.test(l)){if(prev&&userRe.test(prev))users.push({u:prev,t:l});prev=''}
+      else prev=l;
+    }
+    const m=plain.match(/on \w+, (\w+) (\d+), (\d{4}) at (\d+):(\d+) ([AP]M) UTC/);
+    if(m){let h=+m[4]%12;if(m[6]==='PM')h+=12;ts=Date.UTC(+m[3],MON[m[1].slice(0,3).toLowerCase()],+m[2],h,+m[5])}
+  }
+  const seen=new Set();users=users.filter(x=>{x.u=x.u.toLowerCase();if(seen.has(x.u))return false;seen.add(x.u);return true});
+  if(!users.length)throw new Error('Не нашёл ников в файле');
+  return{snap:{id:Date.now()+Math.random().toString(36).slice(2,6),type,ts:ts||file.lastModified||Date.now(),name:file.name,users}};
+}
+
+async function handle(files){
+  const out=[];
+  for(const f of files){
+    try{
+      const r=parse(await f.text(),f);
+      if(r.backup){
+        const have=new Set(snaps.map(s=>s.id));
+        r.backup.snaps.forEach(s=>{if(!have.has(s.id))snaps.push(s)});
+        out.push('Копия восстановлена');
+      }else{
+        const s=r.snap;
+        if(snaps.some(x=>x.type===s.type&&x.ts===s.ts&&x.users.length===s.users.length)){out.push(f.name+': уже загружен');continue}
+        snaps.push(s);out.push(f.name+': '+s.users.length+' ('+TN[s.type].toLowerCase()+')');
+      }
+    }catch(e){out.push(f.name+': '+e.message)}
+  }
+  snaps.sort((a,b)=>a.ts-b.ts);save();
+  $('msg').innerHTML=out.map(esc).join('<br>');
+  render();
+}
+
+function render(){
+  const box=$('snaps');
+  if(!snaps.length)box.innerHTML='<div class="empty">Пока ничего нет. Загрузите первый файл.</div>';
+  else box.innerHTML=snaps.slice().reverse().map(s=>`<div class="snap"><div>${TN[s.type]}: <b>${s.users.length}</b><br><small>${fmt(s.ts)}</small></div><button class="sm" data-del="${s.id}">Удалить</button></div>`).join('');
+  const types=[...new Set(snaps.map(s=>s.type))];
+  const cur=$('type').value;
+  $('type').innerHTML=types.map(t=>`<option value="${t}">${TN[t]}</option>`).join('');
+  if(types.includes(cur))$('type').value=cur;
+  fillSel();
+}
+function fillSel(){
+  const t=$('type').value;
+  const list=snaps.filter(s=>s.type===t);
+  $('cmpWrap').hidden=!snaps.length;
+  const opts=list.map(s=>`<option value="${s.id}">${fmt(s.ts)} (${s.users.length})</option>`).join('');
+  const pa=$('a').value,pb=$('b').value;
+  $('a').innerHTML=opts;$('b').innerHTML=opts;
+  const ids=list.map(s=>s.id);
+  $('a').value=ids.includes(pa)?pa:(ids[ids.length-2]||ids[0]||'');
+  $('b').value=ids.includes(pb)?pb:(ids[ids.length-1]||'');
+  compare();
+}
+function compare(){
+  const A=snaps.find(s=>s.id===$('a').value),B=snaps.find(s=>s.id===$('b').value);
+  const res=$('res');
+  if(!A||!B){res.innerHTML='';return}
+  const am=new Map(A.users.map(x=>[x.u,x])),bm=new Map(B.users.map(x=>[x.u,x]));
+  const gone=A.users.filter(x=>!bm.has(x.u)),added=B.users.filter(x=>!am.has(x.u));
+  const diff=B.users.length-A.users.length;
+  const lists={out:gone,in:added};
+  const label=$('type').value==='followers'?{out:'Отписались',in:'Новые'}:{out:'Вы отписались',in:'Вы подписались'};
+  let html=`<div class="stats">
+   <div class="stat"><b>${A.users.length}</b><span>было</span></div>
+   <div class="stat"><b>${B.users.length}</b><span>стало (${diff>0?'+':''}${diff})</span></div>
+   <div class="stat"><b class="neg">${gone.length}</b><span>ушли</span></div></div>`;
+  if(A===B)html+='<div class="empty">Выберите два разных снимка.</div>';
+  html+=`<div class="tabs"><button data-tab="out" class="${tab==='out'?'act':''}">${label.out} (${gone.length})</button><button data-tab="in" class="${tab==='in'?'act':''}">${label.in} (${added.length})</button>`;
+  const f=snaps.filter(s=>s.type==='followers').pop(),g=snaps.filter(s=>s.type==='following').pop();
+  if(f&&g)html+=`<button data-tab="nb" class="${tab==='nb'?'act':''}">Не подписаны в ответ</button>`;
+  html+='</div><input type="search" id="q" placeholder="Поиск по нику" value="'+esc(q)+'">';
+  let items=[],note='';
+  if(tab==='nb'&&f&&g){const fs=new Set(f.users.map(x=>x.u));items=g.users.filter(x=>!fs.has(x.u));note=`Вы подписаны, а они на вас нет (по последним снимкам: ${fmt(g.ts)} и ${fmt(f.ts)}).`}
+  else items=lists[tab==='nb'?'out':tab];
+  const shown=items.filter(x=>x.u.includes(q.toLowerCase()));
+  html+=note?`<p class="mut">${esc(note)}</p>`:'';
+  html+=shown.length?`<ul class="users">${shown.map(x=>`<li><a href="https://www.instagram.com/${encodeURIComponent(x.u)}/" target="_blank" rel="noopener">${esc(x.u)}</a><span class="mut">${esc(x.t||'')}</span></li>`).join('')}</ul>`:'<div class="empty">Список пуст.</div>';
+  if(shown.length)html+=`<div class="row" style="margin-top:10px"><button class="sm" id="cp">Скопировать ники</button></div>`;
+  res.innerHTML=html;
+  const qi=$('q');qi.oninput=()=>{q=qi.value;const p=qi.selectionStart;compare();const n=$('q');n.focus();n.setSelectionRange(p,p)};
+  if($('cp'))$('cp').onclick=()=>{navigator.clipboard.writeText(shown.map(x=>x.u).join('\n')).then(()=>$('cp').textContent='Скопировано')};
+}
+
+$('file').onchange=e=>{handle([...e.target.files]);e.target.value=''};
+$('restore').onchange=e=>{handle([...e.target.files]);e.target.value=''};
+$('rs').onclick=()=>$('restore').click();
+$('type').onchange=fillSel;$('a').onchange=compare;$('b').onchange=compare;
+$('res').onclick=e=>{const t=e.target.dataset&&e.target.dataset.tab;if(t){tab=t;compare()}};
+$('snaps').onclick=e=>{const id=e.target.dataset&&e.target.dataset.del;if(id&&confirm('Удалить этот снимок?')){snaps=snaps.filter(s=>s.id!==id);save();render()}};
+$('bk').onclick=()=>{
+  const blob=new Blob([JSON.stringify({ft:1,snaps})],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='followers-backup.json';a.click();
+};
+const d=$('drop');
+['dragover','dragenter'].forEach(n=>d.addEventListener(n,e=>{e.preventDefault();d.classList.add('on')}));
+['dragleave','drop'].forEach(n=>d.addEventListener(n,e=>{e.preventDefault();d.classList.remove('on')}));
+d.addEventListener('drop',e=>handle([...e.dataTransfer.files]));
+render();
+</script>
+</body>
+</html>
